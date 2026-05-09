@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>TRPG共有</title>
+</head>
+<body>
+  <h2>共有メモ</h2>
+
+  <div id="messages"></div>
+
+  <input id="text" placeholder="入力">
+  <button onclick="send()">送信</button>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+    import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc, updateDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+  apiKey: "AIzaSyDdrkCTwaaOKihLfGQlNqznk1_8MO6loyY",
+  authDomain: "ai-nosukinamura.firebaseapp.com",
+  projectId: "ai-nosukinamura",
+  storageBucket: "ai-nosukinamura.firebasestorage.app",
+  messagingSenderId: "427184372297",
+  appId: "1:427184372297:web:6199060bf179aa7c8f1d98",
+  measurementId: "G-SX5EKLJESH"
+};
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    const messagesDiv = document.getElementById("messages");
+
+    onSnapshot(collection(db, "messages"), (snapshot) => {
+  messagesDiv.innerHTML = "";
+
+  snapshot.forEach(docItem => {
+    const data = docItem.data();
+    const id = docItem.id;
+
+    messagesDiv.innerHTML += `
+      <p>
+        ${data.text}
+        <button onclick="deleteMessage('${id}')">削除</button>
+        <button onclick="editMessage('${id}', '${data.text}')">編集</button>
+      </p>
+    `;
+  });
+});
+
+    window.send = async () => {
+      const text = document.getElementById("text").value;
+      await addDoc(collection(db, "messages"), { text });
+      document.getElementById("text").value = "";
+    };
+
+    window.deleteMessage = async (id) => {
+      await deleteDoc(doc(db, "messages", id));
+};
+
+    window.editMessage = async (id, oldText) => {
+      const newText = prompt("編集する内容", oldText);
+      if (newText !== null) {
+      await updateDoc(doc(db, "messages", id), {
+      text: newText
+    });
+  }
+};
+  </script>
+</body>
+</html>
