@@ -20,3 +20,18 @@ app.post('/api/chat', async (req, res) => {
       role: m.role === 'assistant' ? 'model' : 'user',
       parts: [{ text: m.content }]
     }));
+    const chat = model.startChat({ history });
+    const lastMessage = messages[messages.length - 1].content;
+    console.log("Geminiに送信:", lastMessage);
+    const result = await chat.sendMessage(lastMessage);
+    const reply = result.response.text();
+    console.log("Gemini返答:", reply);
+    res.json({ reply });
+  } catch (err) {
+    console.error("エラー詳細:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
