@@ -111,7 +111,9 @@
           })
         });
         console.log("ステータス:", res.status);
-        const data = await res.json();
+        const text = await res.text();
+        console.log("Renderからの生レスポンス:", text);
+        const data = JSON.parse(text);
         console.log("Renderからの返答:", data);
         const reply = data.reply;
 
