@@ -71,10 +71,9 @@
     };
 
     // ── AI会話（全員共有） ──
-    const RENDER_URL = "https://hello-express-27sj.onrender.com"; // ← 要変更
+    const RENDER_URL = "https://hello-express-27sj.onrender.com";
     const chatLog = document.getElementById("chat-log");
 
-    // Firestoreのai_chatコレクションをリアルタイム監視 → 全員に反映
     const chatQuery = query(collection(db, "ai_chat"), orderBy("timestamp"));
     onSnapshot(chatQuery, (snapshot) => {
       chatLog.innerHTML = "";
@@ -93,9 +92,8 @@
       if (!userText) return;
       input.value = "";
 
-      const sender = prompt("あなたの名前は？") || "プレイヤー"; // 毎回聞かないよう後で改善可
+      const sender = prompt("あなたの名前は？") || "プレイヤー";
 
-      // ユーザー発言をFirestoreに保存（全員に共有される）
       await addDoc(collection(db, "ai_chat"), {
         role: "user",
         sender,
@@ -103,7 +101,6 @@
         timestamp: new Date()
       });
 
-      // Firestoreから現在の会話履歴を組み立ててRenderへ送信
       try {
         const res = await fetch(`${RENDER_URL}/api/chat`, {
           method: "POST",
@@ -113,10 +110,17 @@
             systemPrompt: "あなたはTRPGのゲームマスターです。"
           })
         });
+        console.log("ステータス:", res.status);
         const data = await res.json();
+        console.log("Renderからの返答:", data);
         const reply = data.reply;
 
-        // AIの返答もFirestoreに保存（全員に共有される）
+        if (!reply) {
+          console.error("replyが空:", data);
+          chatLog.innerHTML += `<p style="color:red">エラー: ${data.error || "返答なし"}</p>`;
+          return;
+        }
+
         await addDoc(collection(db, "ai_chat"), {
           role: "assistant",
           sender: "AI",
