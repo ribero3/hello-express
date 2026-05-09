@@ -1,31 +1,22 @@
 const express = require('express');
 const cors = require('cors');
-const OpenAI = require('openai');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 const app = express();
-
-app.use(cors({
-  origin: '*' // すべてのオリジンを許可
-}));
+app.use(cors({ origin: '*' }));
 app.use(express.json());
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 app.post('/api/chat', async (req, res) => {
   const { messages, systemPrompt } = req.body;
+  console.log("リクエスト受信:", JSON.stringify(messages));
   try {
-    const response = await openai.chat.completions.create({
-      model: 'gpt-4o',
-      messages: [
-        { role: 'system', content: systemPrompt || 'あなたはTRPGのゲームマスターです。' },
-        ...messages
-      ]
+    const model = genAI.getGenerativeModel({
+      model: 'gemini-1.5-flash',
+      systemInstruction: systemPrompt || 'あなたはTRPGのゲームマスターです。'
     });
-    res.json({ reply: response.choices[0].message.content });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+    const history = messages.slice(0, -1).map(m => ({
+      role: m.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: m.content }]
+    }));
