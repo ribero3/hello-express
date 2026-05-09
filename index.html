@@ -2,69 +2,135 @@
 <html>
 <head>
   <title>TRPG共有</title>
+  <style>
+    #chat-log { border: 1px solid #ccc; height: 200px; overflow-y: auto; padding: 8px; margin-bottom: 8px; }
+    #messages { border: 1px solid #ccc; padding: 8px; margin-bottom: 8px; }
+    .user-msg { color: #0055cc; }
+    .ai-msg { color: #228822; }
+  </style>
 </head>
 <body>
   <h2>共有メモ</h2>
-
   <div id="messages"></div>
+  <input id="text" placeholder="メモ入力">
+  <button onclick="send()">メモ送信</button>
 
-  <input id="text" placeholder="入力">
-  <button onclick="send()">送信</button>
+  <hr>
+  <h2>AIエージェント（全員共有）</h2>
+  <div id="chat-log"></div>
+  <input id="ai-input" placeholder="AIに話しかける" style="width:60%">
+  <button onclick="sendToAI()">送信</button>
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-    import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc, updateDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+    import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc, updateDoc, orderBy, query }
+      from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
     const firebaseConfig = {
-  apiKey: "AIzaSyDdrkCTwaaOKihLfGQlNqznk1_8MO6loyY",
-  authDomain: "ai-nosukinamura.firebaseapp.com",
-  projectId: "ai-nosukinamura",
-  storageBucket: "ai-nosukinamura.firebasestorage.app",
-  messagingSenderId: "427184372297",
-  appId: "1:427184372297:web:6199060bf179aa7c8f1d98",
-  measurementId: "G-SX5EKLJESH"
-};
+      apiKey: "AIzaSyDdrkCTwaaOKihLfGQlNqznk1_8MO6loyY",
+      authDomain: "ai-nosukinamura.firebaseapp.com",
+      projectId: "ai-nosukinamura",
+      storageBucket: "ai-nosukinamura.firebasestorage.app",
+      messagingSenderId: "427184372297",
+      appId: "1:427184372297:web:6199060bf179aa7c8f1d98",
+      measurementId: "G-SX5EKLJESH"
+    };
 
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
 
+    // ── Firebase メモ ──
     const messagesDiv = document.getElementById("messages");
-
     onSnapshot(collection(db, "messages"), (snapshot) => {
-  messagesDiv.innerHTML = "";
-
-  snapshot.forEach(docItem => {
-    const data = docItem.data();
-    const id = docItem.id;
-
-    messagesDiv.innerHTML += `
-      <p>
-        ${data.text}
-        <button onclick="deleteMessage('${id}')">削除</button>
-        <button onclick="editMessage('${id}', '${data.text}')">編集</button>
-      </p>
-    `;
-  });
-});
+      messagesDiv.innerHTML = "";
+      snapshot.forEach(docItem => {
+        const data = docItem.data();
+        const id = docItem.id;
+        messagesDiv.innerHTML += `
+          <p>
+            ${data.text}
+            <button onclick="deleteMessage('${id}')">削除</button>
+            <button onclick="editMessage('${id}', '${data.text}')">編集</button>
+          </p>`;
+      });
+    });
 
     window.send = async () => {
       const text = document.getElementById("text").value;
       await addDoc(collection(db, "messages"), { text });
       document.getElementById("text").value = "";
     };
-
     window.deleteMessage = async (id) => {
       await deleteDoc(doc(db, "messages", id));
-};
-
+    };
     window.editMessage = async (id, oldText) => {
       const newText = prompt("編集する内容", oldText);
       if (newText !== null) {
-      await updateDoc(doc(db, "messages", id), {
-      text: newText
+        await updateDoc(doc(db, "messages", id), { text: newText });
+      }
+    };
+
+    // ── AI会話（全員共有） ──
+    const RENDER_URL = "https://hello-express-27sj.onrender.com"; // ← 要変更
+    const chatLog = document.getElementById("chat-log");
+
+    // Firestoreのai_chatコレクションをリアルタイム監視 → 全員に反映
+    const chatQuery = query(collection(db, "ai_chat"), orderBy("timestamp"));
+    onSnapshot(chatQuery, (snapshot) => {
+      chatLog.innerHTML = "";
+      snapshot.forEach(docItem => {
+        const data = docItem.data();
+        const cls = data.role === "user" ? "user-msg" : "ai-msg";
+        const label = data.role === "user" ? `${data.sender}: ` : "AI: ";
+        chatLog.innerHTML += `<p class="${cls}">${label}${data.content}</p>`;
+      });
+      chatLog.scrollTop = chatLog.scrollHeight;
     });
-  }
-};
+
+    window.sendToAI = async () => {
+      const input = document.getElementById("ai-input");
+      const userText = input.value.trim();
+      if (!userText) return;
+      input.value = "";
+
+      const sender = prompt("あなたの名前は？") || "プレイヤー"; // 毎回聞かないよう後で改善可
+
+      // ユーザー発言をFirestoreに保存（全員に共有される）
+      await addDoc(collection(db, "ai_chat"), {
+        role: "user",
+        sender,
+        content: userText,
+        timestamp: new Date()
+      });
+
+      // Firestoreから現在の会話履歴を組み立ててRenderへ送信
+      try {
+        const res = await fetch(`${RENDER_URL}/api/chat`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            messages: [{ role: "user", content: userText }],
+            systemPrompt: "あなたはTRPGのゲームマスターです。"
+          })
+        });
+        const data = await res.json();
+        const reply = data.reply;
+
+        // AIの返答もFirestoreに保存（全員に共有される）
+        await addDoc(collection(db, "ai_chat"), {
+          role: "assistant",
+          sender: "AI",
+          content: reply,
+          timestamp: new Date()
+        });
+      } catch (e) {
+        chatLog.innerHTML += `<p style="color:red">エラー: ${e.message}</p>`;
+      }
+    };
+
+    document.getElementById("ai-input").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") sendToAI();
+    });
   </script>
 </body>
 </html>
